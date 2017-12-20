@@ -10,6 +10,7 @@ defmodule Tds.Messages do
   require Logger
 
   defrecord :msg_prelogin, [:params]
+  defrecord :msg_prelogin_ack, [:type, :options]
   defrecord :msg_login, [:params]
   defrecord :msg_login_ack, [:type, :data]
   defrecord :msg_ready, [:status]
@@ -81,7 +82,26 @@ defmodule Tds.Messages do
   # @tds_prelogin_traceid     5
   # @tds_prelogin_terminator  0xFF
 
+  ## Decoding prelogin options
+
+  defp decode_option_headers(<<0xff, _tail::binary>>) do
+    []
+  end
+
+  defp decode_option_headers(<<field::size(8), offset::size(16), length::size(16), tail::binary>>) do
+    [{field, offset, length} | decode_option_headers(tail)]
+  end
+
   ## Parsers
+
+  def parse(:prelogin, @tds_pack_reply, _header, tail) do
+    option_headers = decode_option_headers tail
+    options = Enum.map option_headers, fn {field, offset, length} ->
+      {field, :binary.part(tail, offset, length)}
+    end
+
+    msg_prelogin_ack(type: 4, options: options)
+  end
 
   def parse(:login, @tds_pack_reply, _header, tail) do
     case tail do
@@ -124,14 +144,17 @@ defmodule Tds.Messages do
     encode(msg, env)
   end
 
-  defp encode(msg_prelogin(params: _params), _env) do
+  defp encode(msg_prelogin(params: params), _env) do
     version_data = <<11, 0, 12, 56, 0, 0>>
     version_length = byte_size(version_data)
-    version_offset = 0x06
+    version_offset = 5 + 5 + 1
     version = <<0x00, version_offset::size(16), version_length::size(16)>>
     terminator = <<0xFF>>
+    encryption_offset = version_offset + version_length
+    encryption = <<0x01, encryption_offset::size(16), 1::size(16)>>
+    encryption_data = if Keyword.get(params, :encrypt?, false), do: <<1>>, else: <<2>>
     prelogin_data = version_data
-    data = version <> terminator <> prelogin_data
+    data = version <> encryption <> terminator <> prelogin_data <> encryption_data
     encode_packets(0x12, data, [])
     # encode_header(0x12, data)<>data
   end
@@ -162,9 +185,11 @@ defmodule Tds.Messages do
     offset_start = byte_size(login_a) + 4
     username = params[:username]
     password = params[:password]
+    servername = params[:servername] || ""
 
     username_ucs = to_little_ucs2(username)
     password_ucs = to_little_ucs2(password)
+    servername_ucs = to_little_ucs2(servername)
 
     password_ucs_xor = encode_tdspassword(password_ucs)
     # Before submitting a password from the client to the server,
@@ -178,7 +203,7 @@ defmodule Tds.Messages do
     database_ucs = to_little_ucs2(database)
 
     login_data =
-      username_ucs <> password_ucs_xor <> clt_int_name_ucs <> database_ucs
+      username_ucs <> password_ucs_xor <> servername_ucs <> clt_int_name_ucs <> database_ucs
 
     curr_offset = offset_start + 58
     ibHostName = <<curr_offset::little-size(16)>>
@@ -195,8 +220,9 @@ defmodule Tds.Messages do
     ibAppName = <<0::size(16)>>
     cchAppName = <<0::size(16)>>
 
-    ibServerName = <<0::size(16)>>
-    cchServerName = <<0::size(16)>>
+    ibServerName = <<curr_offset::little-size(16)>>
+    cchServerName = <<String.length(servername)::little-size(16)>>
+    curr_offset = curr_offset + byte_size(servername_ucs)
 
     ibUnused = <<0::size(16)>>
     cbUnused = <<0::size(16)>>

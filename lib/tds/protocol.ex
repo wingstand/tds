@@ -8,6 +8,7 @@ defmodule Tds.Protocol do
 
   alias Tds.Parameter
   alias Tds.Query
+  alias Tds.TlsWrapper
 
   require Logger
 
@@ -16,6 +17,11 @@ defmodule Tds.Protocol do
   @timeout 5000
   @max_packet 4 * 1024
   @sock_opts [packet: :raw, mode: :binary, active: false, recbuf: 4096]
+
+  @tds_encryption_off 0
+  @tds_encryption_on 1
+  @tds_encryption_not_supported 2
+  @tds_encryption_required 3
 
   defstruct sock: nil,
             usock: nil,
@@ -91,14 +97,26 @@ defmodule Tds.Protocol do
     end
   end
 
-  def checkout(%{sock: {_mod, sock}} = s) do
+  def checkout(%{sock: {:gen_tcp, sock}} = s) do
     :ok = :inet.setopts(sock, active: false)
 
     {:ok, s}
   end
 
-  def checkin(%{sock: {_mod, sock}} = s) do
+  def checkout(%{sock: {:ssl, sock}} = s) do
+    :ok = :ssl.setopts(sock, active: false)
+
+    {:ok, s}
+  end
+
+  def checkin(%{sock: {:gen_tcp, sock}} = s) do
     :ok = :inet.setopts(sock, active: :once)
+
+    {:ok, s}
+  end
+
+  def checkin(%{sock: {:ssl, sock}} = s) do
+    :ok = :ssl.setopts(sock, active: :once)
 
     {:ok, s}
   end
@@ -189,7 +207,13 @@ defmodule Tds.Protocol do
 
         :ok = :inet.setopts(sock, buffer: buffer)
 
-        case login(%{s | sock: {:gen_tcp, sock}}) do
+        login_result = if Keyword.get(opts, :encrypt?, false) do
+          prelogin(%{s | sock: {:gen_tcp, sock}})
+        else
+          login(%{s | sock: {:gen_tcp, sock}})
+        end
+
+        case login_result do
           {:error, error, _state} ->
             :gen_tcp.close(sock)
             {:error, error}
@@ -373,14 +397,7 @@ defmodule Tds.Protocol do
 
   def prelogin(%{opts: opts} = s) do
     msg = msg_prelogin(params: opts)
-
-    case msg_send(msg, s) do
-      :ok ->
-        {:noreply, %{s | state: :prelogin}}
-
-      {:error, reason, s} ->
-        error(%Tds.Error{message: "tcp send: #{reason}"}, s)
-    end
+    prelogin_send(msg, s)
   end
 
   def login(%{opts: opts} = s) do
@@ -560,6 +577,31 @@ defmodule Tds.Protocol do
   def message(:prelogin, _state) do
   end
 
+  def message(:prelogin, msg_prelogin_ack(options: options), s) do
+    encryption = Enum.reduce options, @tds_encryption_off, fn
+      {1, <<value::size(8)>>}, _acc -> value
+      _, acc -> acc
+    end
+
+    case encryption do
+      @tds_encryption_off ->
+        # This should cause the client to encrypt only the login packet it sends,
+        # but I can't succesfully downgrade a TSL connection, so unsupported for now.
+        # Note, we should never see this as we never tell the server that encryption
+        # is off bit available
+        {:error, %Tds.Error{message: "cannot turn off encryption"}, s}
+
+      @tds_encryption_on ->
+        start_tls(s)
+
+      @tds_encryption_not_supported ->
+        login(s)
+
+      @tds_encryption_required ->
+        {:error, %Tds.Error{message: "encryption required"}, s}
+    end
+  end
+
   def message(
         :login,
         msg_login_ack(),
@@ -578,7 +620,7 @@ defmodule Tds.Protocol do
         SET ANSI_WARNINGS ON;
         SET CONCAT_NULL_YIELDS_NULL ON;
         SET TEXTSIZE 2147483647;
-        ALTER DATABASE #{opts[:database]} SET ALLOW_SNAPSHOT_ISOLATION ON;
+        ALTER DATABASE [#{opts[:database]}] SET ALLOW_SNAPSHOT_ISOLATION ON;
       """,
       s
     )
@@ -651,7 +693,10 @@ defmodule Tds.Protocol do
   # end
 
   defp msg_send(msg, %{sock: {mod, sock}, env: env} = s) do
-    :inet.setopts(sock, active: false)
+    case mod do
+      :gen_tcp -> :inet.setopts(sock, active: false)
+      :ssl -> :ssl.setopts(sock, active: false)
+    end
 
     paks = encode_msg(msg, env)
 
@@ -687,7 +732,7 @@ defmodule Tds.Protocol do
         |> package_recv(s, length - 8)
         |> msg_recv(s)
 
-      # this heder belongs to last package
+      # this header belongs to last package
       {
         :ok,
         <<
@@ -755,6 +800,38 @@ defmodule Tds.Protocol do
 
       buffer ->
         new_data(buffer, %{s | state: :login})
+    end
+  end
+
+  defp prelogin_send(msg, %{sock: {mod, sock}, env: env} = s) do
+    paks = encode_msg(msg, env)
+
+    Enum.each(paks, fn pak ->
+      mod.send(sock, pak)
+    end)
+
+    case msg_recv(<<>>, s) do
+      {:disconnect, ex, s} ->
+        {:error, ex, s}
+
+      buffer ->
+        new_data(buffer, %{s | state: :prelogin})
+    end
+  end
+
+  # TDS sends/receives the TLS handshake inside TDS prelogin packets, so we
+  # have to wrap/unwrap the data before letting the Erlang SSL library deal with it
+
+  defp start_tls(%{sock: {_mod, sock}} = s) do
+    {:ok, pid} = TlsWrapper.start_link sock
+
+    case :ssl.connect sock, cb_info: {TlsWrapper, :tcp, :tcp_closed, :tcp_error} do
+      {:ok, sslsocket} ->
+        Kernel.send pid, :negotiated
+        login(%{s | sock: {:ssl, sslsocket}, pak_header: "", pak_data: ""})
+
+      {:error, reason} ->
+        {:error, %Tds.Error{message: "cannot start TDS: #{inspect reason}"}, s}
     end
   end
 

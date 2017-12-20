@@ -9,3 +9,4 @@ cover/
 .idea/
 .code/
 .tool-versions
+.DS_Store
