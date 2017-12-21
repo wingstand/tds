@@ -9,6 +9,7 @@ defmodule Tds.Protocol do
   alias Tds.Parameter
   alias Tds.Query
   alias Tds.TlsWrapper
+  alias Tds.Types
 
   require Logger
 
@@ -633,6 +634,14 @@ defmodule Tds.Protocol do
         msg_sql_result(columns: columns, rows: rows, done: done),
         %{} = s
       ) do
+
+    types =
+      if columns != nil do
+        Enum.map columns, fn col -> Types.data_type_to_atom(col[:data_type_code]) end
+      else
+        nil
+      end
+
     columns =
       if columns != nil do
         columns
@@ -651,13 +660,13 @@ defmodule Tds.Protocol do
 
     rows = if num_rows == 0 && rows == nil, do: [], else: rows
 
-    result = %Tds.Result{columns: columns, rows: rows, num_rows: num_rows}
+    result = %Tds.Result{columns: columns, rows: rows, num_rows: num_rows, types: types}
 
     {:ok, %{s | state: :executing, result: result}}
   end
 
   def message(:executing, msg_trans(trans: trans), %{} = s) do
-    result = %Tds.Result{columns: [], rows: [], num_rows: 0}
+    result = %Tds.Result{columns: [], rows: [], num_rows: 0, types: []}
 
     {:ok, %{s | state: :ready, result: result, env: %{trans: trans}}}
   end
@@ -665,7 +674,7 @@ defmodule Tds.Protocol do
   def message(:executing, msg_prepared(params: params), %{} = s) do
     {"@handle", handle} = params
 
-    result = %Tds.Result{columns: [], rows: [], num_rows: 0}
+    result = %Tds.Result{columns: [], rows: [], num_rows: 0, types: []}
     query = %Tds.Query{handle: handle}
 
     {:ok, %{s | state: :ready, result: result, query: query}}

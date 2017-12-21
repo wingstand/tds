@@ -14,8 +14,9 @@ defmodule Tds.Result do
   @type t :: %__MODULE__{
           columns: [String.t()] | nil,
           rows: [tuple] | nil,
-          num_rows: integer
+          num_rows: integer,
+          types: [atom]
         }
 
-  defstruct [:columns, :rows, :num_rows]
+  defstruct [:columns, :rows, :num_rows, :types]
 end
