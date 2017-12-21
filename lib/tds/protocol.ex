@@ -9,7 +9,6 @@ defmodule Tds.Protocol do
   alias Tds.Parameter
   alias Tds.Query
   alias Tds.TlsWrapper
-  alias Tds.Types
 
   require Logger
 
@@ -637,7 +636,7 @@ defmodule Tds.Protocol do
 
     types =
       if columns != nil do
-        Enum.map columns, fn col -> Types.data_type_to_atom(col[:data_type_code]) end
+        Enum.map columns, fn col -> col[:data_type_code] end
       else
         nil
       end

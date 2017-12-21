@@ -1761,49 +1761,26 @@ defmodule Tds.Types do
     {type, data, scale: 7}
   end
 
-  def data_type_to_atom(@tds_data_type_null), do: :null
-  def data_type_to_atom(@tds_data_type_tinyint), do: :tinyint
-  def data_type_to_atom(@tds_data_type_bit), do: :bit
-  def data_type_to_atom(@tds_data_type_smallint), do: :smallint
-  def data_type_to_atom(@tds_data_type_int), do: :int
-  def data_type_to_atom(@tds_data_type_smalldatetime), do: :smalldatetime
-  def data_type_to_atom(@tds_data_type_real), do: :real
-  def data_type_to_atom(@tds_data_type_money), do: :money
-  def data_type_to_atom(@tds_data_type_datetime), do: :datetime
-  def data_type_to_atom(@tds_data_type_float), do: :float
-  def data_type_to_atom(@tds_data_type_smallmoney), do: :smallmoney
-  def data_type_to_atom(@tds_data_type_bigint), do: :bigint
+  def data_type_unique_identifier?(@tds_data_type_uniqueidentifier), do: true
+  def data_type_unique_identifier?(_), do: false
 
-  def data_type_to_atom(@tds_data_type_uniqueidentifier), do: :uniqueidentifier
-  def data_type_to_atom(@tds_data_type_intn), do: :intn
-  def data_type_to_atom(@tds_data_type_decimal), do: :decimal
-  def data_type_to_atom(@tds_data_type_numeric), do: :numeric
-  def data_type_to_atom(@tds_data_type_bitn), do: :bitn
-  def data_type_to_atom(@tds_data_type_decimaln), do: :decimaln
-  def data_type_to_atom(@tds_data_type_numericn), do: :numericn
-  def data_type_to_atom(@tds_data_type_floatn), do: :floatn
-  def data_type_to_atom(@tds_data_type_moneyn), do: :moneyn
-  def data_type_to_atom(@tds_data_type_datetimen), do: :datetimen
-  def data_type_to_atom(@tds_data_type_daten), do: :daten
-  def data_type_to_atom(@tds_data_type_timen), do: :timen
-  def data_type_to_atom(@tds_data_type_datetime2n), do: :datetime2n
-  def data_type_to_atom(@tds_data_type_datetimeoffsetn), do: :datetimeoffsetn
-  def data_type_to_atom(@tds_data_type_char), do: :char
-  def data_type_to_atom(@tds_data_type_binary), do: :binary
-  def data_type_to_atom(@tds_data_type_varbinary), do: :varbinary
-  def data_type_to_atom(@tds_data_type_bigvarbinary), do: :bigvarbinary
-  def data_type_to_atom(@tds_data_type_bigvarchar), do: :bigvarchar
-  def data_type_to_atom(@tds_data_type_bigbinary), do: :bigbinary
-  def data_type_to_atom(@tds_data_type_bigchar), do: :bigchar
-  def data_type_to_atom(@tds_data_type_nvarchar), do: :nvarchar
-  def data_type_to_atom(@tds_data_type_nchar), do: :nchar
-  def data_type_to_atom(@tds_data_type_xml), do: :xml
-  def data_type_to_atom(@tds_data_type_udt), do: :udt
-  def data_type_to_atom(@tds_data_type_text), do: :text
-  def data_type_to_atom(@tds_data_type_image), do: :image
-  def data_type_to_atom(@tds_data_type_ntext), do: :ntext
-  def data_type_to_atom(@tds_data_type_bigint), do: :bigint
-  def data_type_to_atom(@tds_data_type_variant), do: :variant
+  def data_type_string?(@tds_data_type_char), do: true
+  def data_type_string?(@tds_data_type_bigvarchar), do: true
+  def data_type_string?(@tds_data_type_bigchar), do: true
+  def data_type_string?(@tds_data_type_nvarchar), do: true
+  def data_type_string?(@tds_data_type_nchar), do: true
+  def data_type_string?(@tds_data_type_text), do: true
+  def data_type_string?(@tds_data_type_ntext), do: true
+  def data_type_string?(_), do: false
 
-  def data_type_to_atom(_), do: :unknown
+  def data_type_8bit_string?(@tds_data_type_char), do: true
+  def data_type_8bit_string?(@tds_data_type_bigvarchar), do: true
+  def data_type_8bit_string?(@tds_data_type_bigchar), do: true
+  def data_type_8bit_string?(@tds_data_type_text), do: true
+  def data_type_8bit_string?(_), do: false
+
+  def data_type_unicode_string?(@tds_data_type_nvarchar), do: true
+  def data_type_unicode_string?(@tds_data_type_nchar), do: true
+  def data_type_unicode_string?(@tds_data_type_ntext), do: true
+  def data_type_unicode_string?(_), do: false
 end

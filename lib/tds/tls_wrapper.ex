@@ -54,13 +54,13 @@ defmodule Tds.TlsWrapper do
     {:noreply, %{wrapper | recv_buffer: remaining}}
   end
 
-  def handle_info({:tcp, _port, data} = info, %__MODULE__{negotiated?: true, controlling_process: pid} = wrapper) do
+  def handle_info({:tcp, _port, _data} = info, %__MODULE__{negotiated?: true, controlling_process: pid} = wrapper) do
     Kernel.send pid, info
 
     {:noreply, wrapper}
   end
 
-  def handle_info({:tcp_closed, port} = info, %__MODULE__{controlling_process: pid} = wrapper) do
+  def handle_info({:tcp_closed, _port} = info, %__MODULE__{controlling_process: pid} = wrapper) do
     Logger.debug "Received tcp closed"
 
     Kernel.send pid, info
